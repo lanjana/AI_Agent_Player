@@ -186,7 +186,7 @@ class Snake_AI:
     def __init__(self):
         self.score = 0
         self.high_score = 0
-        self.game_size = 500
+        self.game_size = 600
         self.done = False
         self.bodies = []
 
@@ -194,7 +194,7 @@ class Snake_AI:
         self.put_food()
 
     def food_caught(self):
-        if self.head.distance(self.food) < 30:
+        if self.head.distance(self.food) < 21:
             body = OBJ(self.head.xcor(), self.head.ycor())
             self.bodies.insert(0, body)
             if self.direction == [1, 0, 0, 0]:
@@ -278,7 +278,7 @@ class Snake_AI:
             if self.head.distance(body) < 20:
                 return True
 
-        if self.head.xcor() <= -self.game_size/2 or self.head.xcor() >= self.game_size/2 or self.head.ycor() <= -self.game_size/2 or self.head.ycor() >= self.game_size/2:
+        if self.head.xcor() < -self.game_size/2 or self.head.xcor() > self.game_size/2 or self.head.ycor() < -self.game_size/2 or self.head.ycor() > self.game_size/2:
             return True
 
         return False

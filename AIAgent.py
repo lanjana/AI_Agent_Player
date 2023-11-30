@@ -10,23 +10,23 @@ class agent:
     def __init__(self, game):
         self.game = game
         self.max_iterations = 1000000
-        self.learning_rate = 0.2
+        self.learning_rate = 0.001
         self.gamma = 0.95
 
-        self.input_szie = 10
+        self.input_szie = 13
 
         self.optimizer = tf.keras.optimizers.Adam(
             learning_rate=self.learning_rate)
         self.criterion = tf.keras.losses.MeanSquaredError()
 
-        self.batch_size = 300
+        self.batch_size = 1000
 
         self.memory = []
         self.distannces = []
 
         self.epsilon = 1
         self.epsilon_min = 0.01
-        self.epsilon_decay = 0.9
+        self.epsilon_decay = 0.995
 
         self.build_model()
         # self.model = tf.keras.models.load_model("model.h5")
@@ -43,7 +43,7 @@ class agent:
 
             if Done:
                 self.train_long_memory()
-                if score >= self.game.high_score:
+                if score > self.game.high_score:
                     self.save_model()
 
                 if self.epsilon > self.epsilon_min:
@@ -53,7 +53,7 @@ class agent:
                 print(score, self.epsilon)
 
     def save_model(self):
-        self.model.save("model.h5")
+        self.model.save("model.keras")
 
     def game_next_move(self, action, score, distance):
         self.distannces.append(distance)
@@ -80,17 +80,38 @@ class agent:
         x_head, y_head = self.game.head.xcor(), self.game.head.ycor()
         x_food, y_food = self.game.food.xcor(), self.game.food.ycor()
         board = self.game.game_size
+        direc = self.game.direction
+        # state = np.array(
+        #     [x_head/board+0.5, y_head/board+0.5, x_food/board+0.5, y_food/board+0.5, *self.game.direction, abs(x_head) > (board/2 - 40), abs(y_head) > (board/2 - 40)], dtype=np.float32).reshape(-1, self.input_szie)
+
         state = np.array(
-            [x_head/board+0.5, y_head/board+0.5, x_food/board+0.5, y_food/board+0.5, *self.game.direction, abs(x_head) > (board/2 - 40), abs(y_head) > (board/2 - 40)], dtype=np.float32).reshape(-1, self.input_szie)
+            [
+                x_head/board+0.5,
+                y_head/board+0.5,
+                # x_food/board+0.5,
+                # y_food/board+0.5,
+
+                *direc,
+
+                (direc[0] == 1 and y_head-board/2 > -20) or (direc[1] == 1 and x_head-board/2 > -20) or (
+                    direc[2] == 1 and y_head+board/2 < 20) or (direc[3] == 1 and x_head+board/2 < 20),
+                (direc[0] == 1 and x_head-board/2 > -20) or (direc[1] == 1 and y_head+board/2 < 20) or (
+                    direc[2] == 1 and x_head+board/2 < 20) or (direc[3] == 1 and y_head-board/2 > -20),
+                (direc[0] == 1 and x_head+board/2 < 20) or (direc[1] == 1 and y_head-board/2 > -20) or (
+                    direc[2] == 1 and x_head-board/2 > -20) or (direc[3] == 1 and y_head+board/2 < 20),
+
+                x_head > x_food,
+                x_head < x_food,
+                y_head > y_food,
+                y_head < y_food
+            ], dtype=np.float32)
 
         return state
 
     def build_model(self):
         self.model = tf.keras.Sequential()
         self.model.add(tf.keras.layers.Flatten())
-        self.model.add(tf.keras.layers.Dense(128, activation="relu"))
-        self.model.add(tf.keras.layers.Dense(64, activation="relu"))
-        self.model.add(tf.keras.layers.Dense(32, activation="relu"))
+        self.model.add(tf.keras.layers.Dense(256, activation="relu"))
         self.model.add(tf.keras.layers.Dense(3, activation="softmax"))
 
         self.model.compile(
@@ -100,7 +121,7 @@ class agent:
         if np.random.rand() <= self.epsilon:
             action = np.random.randint(0, 3)  # 0 left, 1 straight, 2 right
         else:
-            action = self.model.predict(state, verbose=0)[0]
+             action = self.model.predict(state, verbose=0)[0]
             action = np.argmax(action)
 
         model_out = [0, 0, 0]
@@ -182,5 +203,4 @@ class agent:
                    np.array(dones))
 
     def train_short_memory(self, state, action, reward, next_state, done):
-        return 0
         self.train(state, action, reward, next_state, (done,))
