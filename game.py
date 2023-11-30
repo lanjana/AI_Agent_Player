@@ -4,13 +4,15 @@ import random
 import threading as tr
 from AIAgent import agent
 
+import numpy as np
+
 
 class Snake:
     def __init__(self):
         self.delay = 0.1
         self.score = 0
         self.high_score = 0
-        self.game_size = 600
+        self.game_size = 300
         self.done = False
         self.bodies = []
 
@@ -160,7 +162,138 @@ class Snake:
                        random.randint(-self.game_size/2+20, self.game_size/2-20))
 
 
-play = Snake()
+class OBJ:
+    def __init__(self, x, y):
+        self.xcord = x
+        self.ycord = y
+
+    def distance(self, o):
+        distance = ((self.xcord - o.xcord)**2 + (self.ycord - o.ycord)**2)**0.5
+        return distance
+
+    def goto(self, x, y):
+        self.xcord = x
+        self.ycord = y
+
+    def xcor(self):
+        return self.xcord
+
+    def ycor(self):
+        return self.ycord
+
+
+class Snake_AI:
+    def __init__(self):
+        self.score = 0
+        self.high_score = 0
+        self.game_size = 500
+        self.done = False
+        self.bodies = []
+
+        self.put_head()
+        self.put_food()
+
+    def food_caught(self):
+        if self.head.distance(self.food) < 30:
+            body = OBJ(self.head.xcor(), self.head.ycor())
+            self.bodies.insert(0, body)
+            if self.direction == [1, 0, 0, 0]:
+                self.head.goto(self.head.xcor(), self.head.ycor()+20)
+            elif self.direction == [0, 1, 0, 0]:
+                self.head.goto(self.head.xcor()+20, self.head.ycor())
+            elif self.direction == [0, 0, 1, 0]:
+                self.head.goto(self.head.xcor(), self.head.ycor()-20)
+            elif self.direction == [0, 0, 1, 0]:
+                self.head.goto(self.head.xcor()-20, self.head.ycor())
+
+            self.score += 1
+            if self.score > self.high_score:
+                self.high_score = self.score
+            return True
+
+        return False
+
+    def game_over(self):
+        if self.high_score <= self.score:
+            self.high_score = self.score
+
+        self.score = 0
+        self.done = True
+        self.restart_game()
+
+    def restart_game(self):
+        self.done = False
+        self.bodies = []
+        self.head.goto(0, 0)
+        self.direction = [1, 0, 0, 0]
+        self.put_food()
+
+    def next_step(self):
+        if self.colision_occurred():
+            self.game_over()
+            return False
+        else:
+            if self.food_caught():
+                self.put_food()
+                self.set_direction()
+                self.move()
+            else:
+                self.set_direction()
+                self.move()
+            return True
+
+    def set_direction(self, direction=[0, 0, 0, 0]):
+        if direction == [1, 0, 0, 0] and self.direction != [0, 0, 1, 0]:
+            self.direction = [1, 0, 0, 0]
+        elif direction == [0, 1, 0, 0] and self.direction != [0, 0, 0, 1]:
+            self.direction = [0, 1, 0, 0]
+        elif direction == [0, 0, 1, 0] and self.direction != [1, 0, 0, 0]:
+            self.direction = [0, 0, 1, 0]
+        elif direction == [0, 0, 0, 1] and self.direction != [0, 1, 0, 0]:
+            self.direction = [0, 0, 0, 1]
+
+    def move(self):
+        x1 = self.head.xcor()
+        y1 = self.head.ycor()
+
+        for n in self.bodies:
+            x2, y2 = n.xcor(), n.ycor()
+            n.goto(x1, y1)
+            x1 = x2
+            y1 = y2
+
+        x, y = self.head.xcor(), self.head.ycor()
+
+        if self.direction == [1, 0, 0, 0]:
+            self.head.goto(x, y + 20)
+        elif self.direction == [0, 1, 0, 0]:
+            self.head.goto(x + 20, y)
+        elif self.direction == [0, 0, 1, 0]:
+            self.head.goto(x, y - 20)
+        elif self.direction == [0, 0, 0, 1]:
+            self.head.goto(x - 20, y)
+
+    def colision_occurred(self):
+        for body in self.bodies:
+            if self.head.distance(body) < 20:
+                return True
+
+        if self.head.xcor() <= -self.game_size/2 or self.head.xcor() >= self.game_size/2 or self.head.ycor() <= -self.game_size/2 or self.head.ycor() >= self.game_size/2:
+            return True
+
+        return False
+
+    def put_head(self):
+        self.head = OBJ(0, 0)
+        self.direction = [1, 0, 0, 0]
+
+    def put_food(self):
+        self.food = OBJ(random.randint(-self.game_size /
+                                       2+20, self.game_size/2-20), random.randint(-self.game_size /
+                                                                                  2+20, self.game_size/2-20))
+
+
+play = Snake_AI()
 
 # bg_tasks = tr.Thread(target=agent, args=(play,))
 # bg_tasks.daemon = True

@@ -10,7 +10,7 @@ class agent:
     def __init__(self, game):
         self.game = game
         self.max_iterations = 1000000
-        self.learning_rate = 0.01
+        self.learning_rate = 0.2
         self.gamma = 0.95
 
         self.input_szie = 10
@@ -19,15 +19,17 @@ class agent:
             learning_rate=self.learning_rate)
         self.criterion = tf.keras.losses.MeanSquaredError()
 
-        self.batch_size = 100
+        self.batch_size = 300
 
         self.memory = []
+        self.distannces = []
 
         self.epsilon = 1
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.9
 
         self.build_model()
+        # self.model = tf.keras.models.load_model("model.h5")
 
         while True:
             state_old = self.get_state()
@@ -47,12 +49,14 @@ class agent:
                 if self.epsilon > self.epsilon_min:
                     self.epsilon *= self.epsilon_decay
 
+                self.distannces = []
                 print(score, self.epsilon)
 
     def save_model(self):
         self.model.save("model.h5")
 
     def game_next_move(self, action, score, distance):
+        self.distannces.append(distance)
         self.game.set_direction(action)
         self.game.move()
         move = self.game.next_step()
@@ -63,10 +67,10 @@ class agent:
 
         elif self.game.score > score:
             reward = 10
-        elif self.game.head.distance(self.game.food) < distance:
-            dis = self.game.head.distance(self.game.food)
-            max_dis = self.game.game_size * 1.3
-            reward = (max_dis - dis)/max_dis * 10
+        elif self.game.head.distance(self.game.food) < min(self.distannces):
+            reward = 1
+        elif self.game.head.distance(self.game.food) == min(self.distannces):
+            reward = 0
         else:
             reward = -1
 
@@ -77,21 +81,20 @@ class agent:
         x_food, y_food = self.game.food.xcor(), self.game.food.ycor()
         board = self.game.game_size
         state = np.array(
-            [x_head/board, y_head/board, x_food/board, y_food/board, *self.game.direction, abs(x_head) > (board/2 - 40), abs(y_head) > (board/2 - 40)], dtype=np.float32).reshape(-1, self.input_szie)
+            [x_head/board+0.5, y_head/board+0.5, x_food/board+0.5, y_food/board+0.5, *self.game.direction, abs(x_head) > (board/2 - 40), abs(y_head) > (board/2 - 40)], dtype=np.float32).reshape(-1, self.input_szie)
 
         return state
 
     def build_model(self):
         self.model = tf.keras.Sequential()
         self.model.add(tf.keras.layers.Flatten())
-        self.model.add(tf.keras.layers.Dense(256, activation="relu"))
         self.model.add(tf.keras.layers.Dense(128, activation="relu"))
         self.model.add(tf.keras.layers.Dense(64, activation="relu"))
         self.model.add(tf.keras.layers.Dense(32, activation="relu"))
         self.model.add(tf.keras.layers.Dense(3, activation="softmax"))
 
-        self.model.compile(optimizer=tf.keras.optimizers.Adam(
-            lr=self.learning_rate), loss="categorical_crossentropy", metrics=["accuracy"])
+        self.model.compile(
+            optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
 
     def act(self, state):
         if np.random.rand() <= self.epsilon:
@@ -120,32 +123,39 @@ class agent:
         if len(states) == 1:
             states = states.reshape(-1, self.input_szie)
             next_states = [next_states.reshape(-1, self.input_szie)]
-            actions = np.array(actions).reshape(-1, 3)
-            rewards = np.array(rewards).reshape(-1, 1)
+            actions = np.array(actions, dtype=np.float32).reshape(-1, 3)
+            rewards = np.array(rewards, dtype=np.float32).reshape(-1, 1)
             dones = dones
         else:
             states = states.reshape(-1, self.input_szie)
             next_states = next_states.reshape(-1, self.input_szie)
-            actions = np.array(actions).reshape(-1, 3)
-            rewards = np.array(rewards).reshape(-1, 1)
+            actions = np.array(actions, dtype=np.float32).reshape(-1, 3)
+            rewards = np.array(rewards, dtype=np.float32).reshape(-1, 1)
             dones = dones
 
-        pred = self.model.predict(states, verbose=0)
-        target = tf.identity(pred).numpy()
+        # pred = self.model.predict(states, verbose=0)
+        # target = tf.identity(pred).numpy()
         target = actions
 
         for ind in range(len(states)):
             Q_new = rewards[ind]
             if not dones[ind]:
                 # Q_new = rewards[ind] + self.gamma * tf.reduce_max(self.model.predict(next_states[ind].reshape(-1, self.input_szie), verbose=0), axis=1)
-                Q_new += self.learning_rate * (
-                    rewards[ind] + self.gamma * tf.reduce_max(self.model.predict(next_states[ind].reshape(-1, self.input_szie), verbose=0), axis=1) - Q_new)
+                # Q_new += self.learning_rate * (
+                #     rewards[ind] + self.gamma * tf.reduce_max(self.model.predict(next_states[ind].reshape(-1, self.input_szie), verbose=0), axis=1) - Q_new)
+                Q_new = rewards[ind] + self.gamma * np.max(self.model.predict(
+                    next_states[ind].reshape(-1, self.input_szie), verbose=0))
 
             action_idx = tf.argmax(actions[ind]).numpy()
-            target[ind, action_idx] = Q_new
+            for i in range(3):
+                target[ind, i] += -Q_new[0]/2
+            target[ind, action_idx] = Q_new[0]
 
         states = tf.convert_to_tensor(states, dtype=tf.float32)
         target = tf.convert_to_tensor(target, dtype=tf.float32)
+
+        # for s, t in zip(states, target):
+        #     print(s[:4], t)
 
         with tf.GradientTape() as tape:
             pred = self.model(states, training=True)
@@ -154,52 +164,6 @@ class agent:
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(
             zip(gradients, self.model.trainable_variables))
-
-    # def train(self, states, actions, rewards, next_states, dones):
-    #     if len(states) == 1:
-    #         states = states.reshape(-1, self.input_szie)
-    #         next_states = [next_states.reshape(-1, self.input_szie)]
-    #         actions = np.array(actions).reshape(-1, 3)
-    #         rewards = np.array(rewards).reshape(-1, 1)
-    #         dones = dones
-    #     else:
-    #         states = states.reshape(-1, self.input_szie)
-    #         next_states = next_states.reshape(-1, self.input_szie)
-    #         actions = np.array(actions).reshape(-1, 3)
-    #         rewards = np.array(rewards).reshape(-1, 1)
-    #         dones = dones
-
-    #     pred = self.model.predict(states, verbose=0)
-    #     targets = tf.identity(pred).numpy()
-    #     targets = actions
-
-    #     for ind in range(len(targets)):
-    #         if rewards[ind] == 1:
-    #             continue
-    #         else:
-    #             act = actions[ind]
-    #             index_act = np.argmax(act)
-    #             if rewards[ind] == -10:
-    #                 targets[ind] = np.array([1, 1, 1])
-    #                 targets[ind, index_act] = 0
-    #             elif rewards[ind] == -1:
-    #                 targets[ind] = np.array([0.5, 0.5, 0.5])
-    #                 targets[ind, index_act] = 0
-    #             elif rewards[ind] == 0:
-    #                 targets[ind] = np.array([0.5, 0.5, 0.5])
-    #             elif rewards[ind] == 10:
-    #                 targets[ind] = actions[ind]*2
-
-    #     states = tf.convert_to_tensor(states, dtype=tf.float32)
-    #     targets = tf.convert_to_tensor(targets, dtype=tf.float32)
-
-    #     with tf.GradientTape() as tape:
-    #         pred = self.model(states, training=True)
-    #         loss = self.criterion(targets, pred)
-
-    #     gradients = tape.gradient(loss, self.model.trainable_variables)
-    #     self.optimizer.apply_gradients(
-    #         zip(gradients, self.model.trainable_variables))
 
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
@@ -218,4 +182,5 @@ class agent:
                    np.array(dones))
 
     def train_short_memory(self, state, action, reward, next_state, done):
+        return 0
         self.train(state, action, reward, next_state, (done,))
