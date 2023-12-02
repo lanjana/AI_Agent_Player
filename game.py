@@ -12,7 +12,7 @@ class Snake:
         self.delay = 0.1
         self.score = 0
         self.high_score = 0
-        self.game_size = 300
+        self.game_size = 500
         self.done = False
         self.bodies = []
 
@@ -33,9 +33,9 @@ class Snake:
         self.put_food()
 
     def colision_occurred(self):
-        for body in self.bodies:
-            if self.head.distance(body) < 20:
-                return True
+        # for body in self.bodies:
+        #     if self.head.distance(body) < 20:
+        #         return True
 
         if self.head.xcor() <= -self.game_size/2 or self.head.xcor() >= self.game_size/2 or self.head.ycor() <= -self.game_size/2 or self.head.ycor() >= self.game_size/2:
             return True

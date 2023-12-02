@@ -24,12 +24,12 @@ class agent:
         self.memory = []
         self.distannces = []
 
-        self.epsilon = 1
+        self.epsilon = 0.1
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
 
-        self.build_model()
-        # self.model = tf.keras.models.load_model("model.h5")
+        # self.build_model()
+        self.model = tf.keras.models.load_model("model.keras")
 
         while True:
             state_old = self.get_state()
@@ -43,7 +43,7 @@ class agent:
 
             if Done:
                 self.train_long_memory()
-                if score > self.game.high_score:
+                if score >= self.game.high_score:
                     self.save_model()
 
                 if self.epsilon > self.epsilon_min:
@@ -104,7 +104,7 @@ class agent:
                 x_head < x_food,
                 y_head > y_food,
                 y_head < y_food
-            ], dtype=np.float32)
+            ], dtype=np.float32).reshape(-1, self.input_szie)
 
         return state
 
@@ -121,7 +121,7 @@ class agent:
         if np.random.rand() <= self.epsilon:
             action = np.random.randint(0, 3)  # 0 left, 1 straight, 2 right
         else:
-             action = self.model.predict(state, verbose=0)[0]
+            action = self.model.predict(state, verbose=0)[0]
             action = np.argmax(action)
 
         model_out = [0, 0, 0]
@@ -154,6 +154,7 @@ class agent:
             rewards = np.array(rewards, dtype=np.float32).reshape(-1, 1)
             dones = dones
 
+        next_actions = self.model.predict(next_states, verbose=0)
         # pred = self.model.predict(states, verbose=0)
         # target = tf.identity(pred).numpy()
         target = actions
@@ -164,13 +165,15 @@ class agent:
                 # Q_new = rewards[ind] + self.gamma * tf.reduce_max(self.model.predict(next_states[ind].reshape(-1, self.input_szie), verbose=0), axis=1)
                 # Q_new += self.learning_rate * (
                 #     rewards[ind] + self.gamma * tf.reduce_max(self.model.predict(next_states[ind].reshape(-1, self.input_szie), verbose=0), axis=1) - Q_new)
-                Q_new = rewards[ind] + self.gamma * np.max(self.model.predict(
-                    next_states[ind].reshape(-1, self.input_szie), verbose=0))
+                Q_new = rewards[ind] + self.gamma * np.max(next_actions)
 
             action_idx = tf.argmax(actions[ind]).numpy()
-            for i in range(3):
-                target[ind, i] += -Q_new[0]/2
+            target[ind, :] += -Q_new
             target[ind, action_idx] = Q_new[0]
+
+        for i in range(len(states)):
+            if states[i, -7] == 1 and np.max(target[i]) == 1:
+                print("Flase")
 
         states = tf.convert_to_tensor(states, dtype=tf.float32)
         target = tf.convert_to_tensor(target, dtype=tf.float32)
@@ -203,4 +206,5 @@ class agent:
                    np.array(dones))
 
     def train_short_memory(self, state, action, reward, next_state, done):
+        return 0
         self.train(state, action, reward, next_state, (done,))
